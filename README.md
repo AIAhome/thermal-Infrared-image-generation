@@ -1,4 +1,4 @@
-# Infrared-image-generation
+# thermal-Infrared-image-generation
 ## 简介
 热图像具有有用的判别特性。具体而言，温暖的物体（即人类、动物、热车等）往往是感兴趣的对象。
 
