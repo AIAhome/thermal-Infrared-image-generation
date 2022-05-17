@@ -46,8 +46,6 @@ Generative Adversarial Networks实际上是对D和G解决以下极小化极大�
 
 ![cgan fig2](https://user-images.githubusercontent.com/83259959/168706632-7d3912c8-c843-489b-a71f-e97435a1dd0a.png)
 
-![cgan fig3](https://user-images.githubusercontent.com/83259959/168706668-ca7fecde-61ff-4df2-9eef-d62f5289265f.jpg)
-
 ### 3.DCGAN
 
 论文名称：Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks
