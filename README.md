@@ -1,4 +1,9 @@
 # Infrared-image-generation
+## 算法实现
+### 数据处理
+见`process.py`,将原始图片resize为256x256
+### 评价指标
+FID
 ## 参考资料
 
 一个收集了大量 GAN 论文的 Github 项目，并且根据应用方向划分论文：
@@ -10,11 +15,6 @@
 - [tensorflow-GANs](https://github.com/TwistedW/tensorflow-GANs)：TensorFlow 版本
 - [Pytorch-GAN](https://github.com/eriklindernoren/PyTorch-GAN)：PyTorch 版本
 - [Keras-GAN](https://github.com/eriklindernoren/Keras-GAN)：Keras 版本
-## 算法实现
-### 数据处理
-见'process.py',将原始图片resize为256x256
-### 评价指标
-FID
 ## 文献整理
 ### 1. Generative Adversarial Networks
 
