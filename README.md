@@ -104,7 +104,7 @@ blog:[(18条消息) CycleGAN算法笔记_AI之路的博客-CSDN博客_cycle gan]
 
 上一篇论文 Pix2Pix 的问题就是训练数据必须成对，即需要原图片和对应转换后的图片，而现实就是这种数据非常难寻找，甚至有的不存在这样一对一的转换数据，因此有了 CycleGAN，仅仅需要准备两个领域的数据集即可，比如说普通马的图片和斑马的图片，但不需要一一对应。这篇论文提出了一个非常好的方法–循环一致性(Cycle-Consistency)损失函数，如下图所示的结构：
 
-![image](https://user-images.githubusercontent.com/83259959/168706825-ac357682-95bd-4da8-b6e8-4c69c0f2550e.png)
+![image](https://user-images.githubusercontent.com/83259959/168708118-3b44bc80-5ecc-4538-a199-5a6b04f6d3c1.png)
 
 这种结构在接下来图片转换应用的许多 GAN 论文中都有利用到，cycleGAN 可以实现如下图所示的一些应用，普通马和斑马的转换、风格迁移（照片变油画）、冬夏季节变换等等。
 
