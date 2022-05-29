@@ -153,5 +153,3 @@ StyleGAN 借鉴了如 Adaptive Instance Normalization (AdaIN)的自然风格转�
 ### 11.ThermalGAN: Multimodal Color-to-Thermal Image Translation for Person Re-Identification in Multispectral Dataset
 
 提出了一个用于跨模态彩色热人员重新识别 (ReID) 的 ThermalGAN 框架。 我们使用一堆生成对抗网络 (GAN) 将单色探针图像转换为多模态热探针集。 我们使用热直方图和特征描述符作为热特征。
-
-![thermal gan](https://user-images.githubusercontent.com/83259959/168707048-106d219b-63f7-430b-9732-d94ec5aca734.png)
