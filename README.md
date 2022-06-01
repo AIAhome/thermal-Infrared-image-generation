@@ -16,6 +16,10 @@
 见`process.py`,将原始图片resize为256x256
 ### 评价指标
 FID
+### 数据集
+下载地址：[Download Free ADAS Dataset v2 - Teledyne FLIR](https://adas-dataset-v2.flirconservator.com/#downloadguide) 
+
+总共包含 9，711 张热成像图像和 9，233 张 RGB 训练/验证**图像**，并带有 90%/10% 的训练/评估分割。验证**视频**共计 7，498 帧。3，749 个热/RGB 视频对均由一系列以每秒 30 帧 （FPS） 捕获的连续帧组成。一个频谱中的每个视频帧都映射到另一个频谱中的时间同步帧对，在文件中指定。此数据集中的素材是在各种位置收集的，包括各种照明/天气条件。
 ## 参考资料
 
 一个收集了大量 GAN 论文的 Github 项目，并且根据应用方向划分论文：
