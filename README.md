@@ -157,3 +157,18 @@ StyleGAN 借鉴了如 Adaptive Instance Normalization (AdaIN)的自然风格转�
 ### 11.ThermalGAN: Multimodal Color-to-Thermal Image Translation for Person Re-Identification in Multispectral Dataset
 
 提出了一个用于跨模态彩色热人员重新识别 (ReID) 的 ThermalGAN 框架。 我们使用一堆生成对抗网络 (GAN) 将单色探针图像转换为多模态热探针集。 我们使用热直方图和特征描述符作为热特征。
+
+
+
+### 12. UNIT
+
+Paper：(NeurIPS 2017) Unsupervised Image-to-Image Translation Networks
+
+Link：https://proceedings.neurips.cc/paper/2017/file/dc6a6489640ca02b0d42dabeb8e46bb7-Paper.pdf
+
+Abstract:
+
+Unsupervised image-to-image translation aims at learning a joint distribution of images in different domains by using images from the marginal distributions in individual domains. Since there exists an infinite set of joint distributions that can arrive the given marginal distributions, one could infer nothing about the joint distribution from the marginal distributions without additional assumptions. To address the problem, we make a shared-latent space assumption and propose an unsupervised image-to-image translation framework based on Coupled GANs. We compare the proposed framework with competing approaches and present high quality image translation results on various challenging unsupervised image translation tasks, including street scene image translation, animal image translation, and face image translation. We also apply the proposed framework to domain adaptation and achieve state-of-the-art performance on benchmark datasets. Code and additional results are available in https://github.com/mingyuliutw/unit
+
+Checkpoint (on [FLIR_ADAS_v2](https://www.flir.com/oem/adas/adas-dataset-form/#anchor29) dataset): https://drive.google.com/drive/folders/1UJ5nOuc4jYwEot1uEQQgnURMXi4Q-QdL?usp=sharing
+
