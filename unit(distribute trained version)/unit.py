@@ -40,6 +40,7 @@ parser.add_argument("--sample_interval", type=int, default=100, help="interval b
 parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model checkpoints")
 parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
 parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
+parser.add_argument('--seed', default=2022, type=int, help="random seed") 
 parser.add_argument('--local_rank', default=-1, type=int) 
 opt = parser.parse_args()
 print(opt)

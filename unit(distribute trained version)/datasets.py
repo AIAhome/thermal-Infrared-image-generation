@@ -17,9 +17,28 @@ class ImageDataset(Dataset):
     def __init__(self, root, transforms_=None, unaligned=False, mode="train"):
         self.transform = transforms.Compose(transforms_)
         self.unaligned = unaligned
+        
+        if mode == 'train' or mode == 'val':
+            self.files_A = sorted(glob.glob(os.path.join(root, "images_rgb_%s" % mode, 'data') + "/*.*"))
+            self.files_B = sorted(glob.glob(os.path.join(root, "images_thermal_%s" % mode, 'data') + "/*.*"))
+        elif mode == 'test':
+            self.files_A, self.files_B = self._get_map(root, 'rgb_to_thermal_vid_map.json')
 
-        self.files_A = sorted(glob.glob(os.path.join(root, "images_thermal_%s" % mode, 'data') + "/*.*"))
-        self.files_B = sorted(glob.glob(os.path.join(root, "images_rgb_%s" % mode, 'data') + "/*.*"))
+            self.files_A = [os.path.join(root, "video_rgb_%s" % mode, 'data', self.files_A[i]) for i in range(len(self.files_A))]
+            self.files_B = [os.path.join(root, "video_thermal_%s" % mode, 'data',self.files_B[i]) for i in range(len(self.files_B))]
+        else:
+            raise NotImplemented
+
+    def _get_map(self, root, path):
+        import json
+        filepath = os.path.join(root, path)
+        with open(filepath, 'r') as f:
+            #data = f.read()
+            data = json.load(f)
+        files_A = list(data.keys())
+        files_B = list(data.values())
+
+        return files_A, files_B
 
     def __getitem__(self, index):
         image_A = Image.open(self.files_A[index % len(self.files_A)])
@@ -41,3 +60,6 @@ class ImageDataset(Dataset):
 
     def __len__(self):
         return max(len(self.files_A), len(self.files_B))
+
+if __name__=='__main__':
+    dataset = ImageDataset(root='/data/FLIR_ADAS_v2', unaligned=False, mode='test')
