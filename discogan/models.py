@@ -20,7 +20,7 @@ def weights_init_normal(m):
 class UNetDown(nn.Module):
     def __init__(self, in_size, out_size, normalize=True, dropout=0.0):
         super(UNetDown, self).__init__()
-        layers = [nn.Conv2d(in_size, out_size, 4, 2, 1)]
+        layers = [nn.Conv2d(in_size, out_size, 4, 2, 1)] # out = (in+2*padding-kernel-size)/stride+1, i.e. out = in/2+1
         if normalize:
             layers.append(nn.InstanceNorm2d(out_size))
         layers.append(nn.LeakyReLU(0.2))

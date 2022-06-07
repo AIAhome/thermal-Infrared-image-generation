@@ -14,7 +14,7 @@ from torchvision.utils import save_image, make_grid
 
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from torch.autograd import Variable
+# from torch.autograd import Variable
 
 from models import *
 from datasets import *
@@ -26,39 +26,73 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--epoch", type=int, default=0,
+parser.add_argument("--epoch",
+                    type=int,
+                    default=0,
                     help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=201,
+parser.add_argument("--n_epochs",
+                    type=int,
+                    default=101,
                     help="number of epochs of training")
-parser.add_argument('--data_path', type=str,
-                    default='./data', help=' path to the datasets')
-parser.add_argument('--output_path', type=str, default='./output',
+parser.add_argument('--data_path',
+                    type=str,
+                    default='./data',
+                    help=' path to the datasets')
+parser.add_argument('--output_path',
+                    type=str,
+                    default='./output',
                     help='path to save model and output images')
-parser.add_argument('--log_path', type=str, default='./log',
+parser.add_argument('--log_path',
+                    type=str,
+                    default='./log',
                     help='path to store the logs')
-parser.add_argument("--batch_size", type=int, default=4,
+parser.add_argument("--batch_size",
+                    type=int,
+                    default=4,
                     help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002,
+parser.add_argument("--lr",
+                    type=float,
+                    default=0.0002,
                     help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5,
+parser.add_argument("--b1",
+                    type=float,
+                    default=0.5,
                     help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999,
+parser.add_argument("--b2",
+                    type=float,
+                    default=0.999,
                     help="adam: decay of first order momentum of gradient")
-parser.add_argument("--n_cpu", type=int, default=8,
-                    help="number of cpu threads to use during batch generation")
-parser.add_argument('--a_channels', type=int, default=3,
-                    help='channels of the dataset_a')  # 原始rgb图像为channels=3, 如果转成灰度图就是1
-parser.add_argument('--b_channels', type=int, default=1,
+parser.add_argument(
+    "--n_cpu",
+    type=int,
+    default=8,
+    help="number of cpu threads to use during batch generation")
+parser.add_argument(
+    '--a_channels', type=int, default=3,
+    help='channels of the dataset_a')  # 原始rgb图像为channels=3, 如果转成灰度图就是1
+parser.add_argument('--b_channels',
+                    type=int,
+                    default=1,
                     help='channels of the dataset_b')
-parser.add_argument("--img_height", type=int, default=256,
+parser.add_argument("--img_height",
+                    type=int,
+                    default=256,
                     help="size of image height")
-parser.add_argument("--img_width", type=int, default=256,
+parser.add_argument("--img_width",
+                    type=int,
+                    default=256,
                     help="size of image width")
-parser.add_argument("--sample_interval", type=int, default=400,
+parser.add_argument("--sample_interval",
+                    type=int,
+                    default=400,
                     help="interval between saving generator samples")
-parser.add_argument("--checkpoint_interval", type=int,
-                    default=-1, help="interval between model checkpoints")
-parser.add_argument("--gray", type=bool, default=False,
+parser.add_argument("--checkpoint_interval",
+                    type=int,
+                    default=-1,
+                    help="interval between model checkpoints")
+parser.add_argument("--gray",
+                    type=bool,
+                    default=False,
                     help='whether to gray the input image')
 args = parser.parse_args()
 print(args)
@@ -66,17 +100,14 @@ print(args)
 # Create sample, checkpoint directories and logs
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 os.makedirs("%s/images/%s" % (args.output_path, timestamp), exist_ok=True)
-os.makedirs("%s/saved_models/%s" %
-            (args.output_path, timestamp), exist_ok=True)
+os.makedirs("%s/saved_models/%s" % (args.output_path, timestamp),
+            exist_ok=True)
 os.makedirs("%s/runs/%s" % (args.log_path, timestamp), exist_ok=True)
-
 
 # Losses
 adversarial_loss = torch.nn.MSELoss()
 cycle_loss = torch.nn.L1Loss()
 pixelwise_loss = torch.nn.L1Loss()
-
-cuda = torch.cuda.is_available()
 
 # Initialize generator and discriminator
 a_input_shape = (args.a_channels, args.img_height, args.img_width)
@@ -86,25 +117,29 @@ G_BA = GeneratorUNet(args.b_channels, args.a_channels)
 D_A = Discriminator(a_input_shape)
 D_B = Discriminator(b_input_shape)
 
-if cuda:
-    G_AB = G_AB.cuda()
-    G_BA = G_BA.cuda()
-    D_A = D_A.cuda()
-    D_B = D_B.cuda()
-    adversarial_loss.cuda()
-    cycle_loss.cuda()
-    pixelwise_loss.cuda()
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+G_AB = G_AB.to(device)
+G_BA = G_BA.to(device)
+D_A = D_A.to(device)
+D_B = D_B.to(device)
+adversarial_loss.to(device)
+cycle_loss.to(device)
+pixelwise_loss.to(device)
 
 if args.epoch != 0:
     # Load pretrained models
-    G_AB.load_state_dict(torch.load(
-        "%s/saved_models/%s/G_AB_%d.pth" % (args.output_path, timestamp, args.epoch)))
-    G_BA.load_state_dict(torch.load(
-        "%s/saved_models/%s/G_BA_%d.pth" % (args.output_path, timestamp, args.epoch)))
-    D_A.load_state_dict(torch.load("%s/saved_models/%s/D_A_%d.pth" %
-                        (args.output_path, timestamp, args.epoch)))
-    D_B.load_state_dict(torch.load("%s/saved_models/%s/D_B_%d.pth" %
-                        (args.output_path, timestamp, args.epoch)))
+    G_AB.load_state_dict(
+        torch.load("%s/saved_models/%s/G_AB_%d.pth" %
+                   (args.output_path, timestamp, args.epoch)))
+    G_BA.load_state_dict(
+        torch.load("%s/saved_models/%s/G_BA_%d.pth" %
+                   (args.output_path, timestamp, args.epoch)))
+    D_A.load_state_dict(
+        torch.load("%s/saved_models/%s/D_A_%d.pth" %
+                   (args.output_path, timestamp, args.epoch)))
+    D_B.load_state_dict(
+        torch.load("%s/saved_models/%s/D_B_%d.pth" %
+                   (args.output_path, timestamp, args.epoch)))
 else:
     # Initialize weights
     G_AB.apply(weights_init_normal)
@@ -113,69 +148,80 @@ else:
     D_B.apply(weights_init_normal)
 
 # Optimizers
-optimizer_G = torch.optim.Adam(
-    itertools.chain(G_AB.parameters(), G_BA.parameters()), lr=args.lr, betas=(args.b1, args.b2)
-)
-optimizer_D_A = torch.optim.Adam(
-    D_A.parameters(), lr=args.lr, betas=(args.b1, args.b2))
-optimizer_D_B = torch.optim.Adam(
-    D_B.parameters(), lr=args.lr, betas=(args.b1, args.b2))
+optimizer_G = torch.optim.Adam(itertools.chain(G_AB.parameters(),
+                                               G_BA.parameters()),
+                               lr=args.lr,
+                               betas=(args.b1, args.b2))
+optimizer_D_A = torch.optim.Adam(D_A.parameters(),
+                                 lr=args.lr,
+                                 betas=(args.b1, args.b2))
+optimizer_D_B = torch.optim.Adam(D_B.parameters(),
+                                 lr=args.lr,
+                                 betas=(args.b1, args.b2))
 
 # Input tensor type
-Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
+# Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
 # Dataset loader
 A_transforms = [
-    transforms.Grayscale(),
+    # transforms.Grayscale(),
     transforms.CenterCrop(size=1024),
     transforms.Resize(size=args.img_height, interpolation=Image.BICUBIC),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,)),
+    transforms.Normalize((0.5, ), (0.5, )),
 ]
 
 B_transforms = [
     transforms.CenterCrop(size=args.img_height),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,)),
+    transforms.Normalize((0.5, ), (0.5, )),
 ]
 
 dataloader = DataLoader(
-    ImageDataset("%s/images_rgb_train/data" % args.data_path, "%s/images_thermal_train/data" %
-                 args.data_path, A_transforms=A_transforms, B_transfroms=B_transforms),
+    ImageDataset("%s/images_rgb_train/data" % args.data_path,
+                 "%s/images_thermal_train/data" % args.data_path,
+                 A_transforms=A_transforms,
+                 B_transfroms=B_transforms),
     batch_size=args.batch_size,
     shuffle=True,
     num_workers=args.n_cpu,
 )
 val_dataloader = DataLoader(
-    ImageDataset("%s/images_rgb_val/data" % args.data_path, "%s/images_thermal_val/data" %
-                 args.data_path, A_transforms=A_transforms, B_transfroms=B_transforms),
-    batch_size=8,
+    ImageDataset("%s/images_rgb_val/data" % args.data_path,
+                 "%s/images_thermal_val/data" % args.data_path,
+                 A_transforms=A_transforms,
+                 B_transfroms=B_transforms),
+    batch_size=5,
     shuffle=True,
     num_workers=args.n_cpu,
 )
 
 
-def sample_images(batches_done):
+def sample_images(batches_done, device):
     """Saves a generated sample from the validation set"""
-    nrow = 8
+    nrow = 5
     imgs = next(iter(val_dataloader))
     G_AB.eval()
     G_BA.eval()
-    real_A = Variable(imgs["A"].type(Tensor))
+    real_A = imgs['A'].to(device)
     fake_B = G_AB(real_A)
-    real_B = Variable(imgs["B"].type(Tensor))
+    real_B = imgs['B'].to(device)
     fake_A = G_BA(real_B)
+
     # Arange images along x-axis
     real_A = make_grid(real_A, nrow=nrow, normalize=True)  # 拼成一副图像
     real_B = make_grid(real_B, nrow=nrow, normalize=True)
     fake_A = make_grid(fake_A, nrow=nrow, normalize=True)
     fake_B = make_grid(fake_B, nrow=nrow, normalize=True)
     img_sample = torch.cat(
-        (real_A.data, fake_B.data, real_B.data, fake_A.data), 1)  # 上下拼接(0是channel)
-    save_image(img_sample, "%s/images/%s/%s.png" %
-               (args.output_path, timestamp, batches_done), normalize=True)
+        (real_A.data, fake_B.data, real_B.data, fake_A.data),
+        1)  # 上下拼接(0是channel)
+    save_image(img_sample,
+               "%s/images/%s/%s.png" %
+               (args.output_path, timestamp, batches_done),
+               normalize=True)
 
 
 # ----------
@@ -184,21 +230,23 @@ def sample_images(batches_done):
 
 prev_time = time.time()
 
-writer = SummaryWriter(
-    '%s/runs/%s' % (args.log_path, timestamp))
+writer = SummaryWriter('%s/runs/%s' % (args.log_path, timestamp))
 
 for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
-    for i, batch in enumerate(tqdm(dataloader, desc='batch', position=0, colour='green')):
+    for i, batch in enumerate(
+            tqdm(dataloader, desc='batch', position=0, colour='green')):
 
         # Model inputs
-        real_A = Variable(batch["A"].type(Tensor))
-        real_B = Variable(batch["B"].type(Tensor))
+        real_A = batch['A'].to(device)
+        real_B = batch['B'].to(device)
+        real_A.requires_grad = True
+        real_B.requires_grad = True
 
         # Adversarial ground truths
-        valid = Variable(
-            Tensor(np.ones((real_A.size(0), *D_A.output_shape))), requires_grad=False)
-        fake = Variable(
-            Tensor(np.zeros((real_A.size(0), *D_A.output_shape))), requires_grad=False)
+        valid = torch.ones((real_A.size(0), *D_A.output_shape),
+                           requires_grad=False).to(device)
+        fake = torch.zeros((real_A.size(0), *D_A.output_shape),
+                           requires_grad=False).to(device)
 
         # ------------------
         #  Train Generators
@@ -230,7 +278,8 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         loss_G = loss_GAN + loss_cycle + loss_pixelwise
 
         # tensorboard print loss G
-        writer.add_scalar('G_total_loss', loss_G,
+        writer.add_scalar('G_total_loss',
+                          loss_G,
                           global_step=epoch * len(dataloader) + i)
 
         loss_G.backward()
@@ -270,7 +319,8 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         loss_D = 0.5 * (loss_D_A + loss_D_B)
 
         # tensorboard print loss D
-        writer.add_scalar('D_loss', loss_D,
+        writer.add_scalar('D_loss',
+                          loss_D,
                           global_step=epoch * len(dataloader) + i)
 
         # --------------
@@ -296,14 +346,13 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
                     loss_GAN.item(),
                     loss_pixelwise.item(),
                     loss_cycle.item(),
-                )
-            )
+                ))
 
         # If at sample interval save image
         if batches_done % args.sample_interval == 0:
-            sample_images(batches_done)
+            sample_images(batches_done, device)
 
-        # final model and input
+        # add model graph
         if epoch == 0 and i == 0:
             writer.add_graph(G_AB, real_A)
             writer.add_graph(G_BA, real_B)
@@ -312,13 +361,17 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
     if args.checkpoint_interval != -1 and epoch % args.checkpoint_interval == 0:
         # Save model checkpoints
-        torch.save(G_AB.state_dict(), "%s/saved_models/%s/G_AB_%d.pth" %
-                   (args.output_path, timestamp, epoch))
-        torch.save(G_BA.state_dict(), "%s/saved_models/%s/G_BA_%d.pth" %
-                   (args.output_path, timestamp, epoch))
-        torch.save(D_A.state_dict(), "%s/saved_models/%s/D_A_%d.pth" %
-                   (args.output_path, timestamp, epoch))
-        torch.save(D_B.state_dict(), "%s/saved_models/%s/D_B_%d.pth" %
-                   (args.output_path, timestamp, epoch))
+        torch.save(
+            G_AB.state_dict(), "%s/saved_models/%s/G_AB_%d.pth" %
+            (args.output_path, timestamp, epoch))
+        torch.save(
+            G_BA.state_dict(), "%s/saved_models/%s/G_BA_%d.pth" %
+            (args.output_path, timestamp, epoch))
+        torch.save(
+            D_A.state_dict(), "%s/saved_models/%s/D_A_%d.pth" %
+            (args.output_path, timestamp, epoch))
+        torch.save(
+            D_B.state_dict(), "%s/saved_models/%s/D_B_%d.pth" %
+            (args.output_path, timestamp, epoch))
 
 writer.close()
