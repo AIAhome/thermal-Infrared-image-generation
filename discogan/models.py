@@ -44,7 +44,7 @@ class UNetUp(nn.Module):
 
     def forward(self, x, skip_input):
         x = self.model(x)
-        x = torch.cat((x, skip_input), 1)
+        x = torch.cat((x, skip_input), 1)## test
 
         return x
 
