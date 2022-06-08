@@ -84,7 +84,7 @@ parser.add_argument("--img_width",
                     help="size of image width")
 parser.add_argument("--sample_interval",
                     type=int,
-                    default=400,
+                    default=800,
                     help="interval between saving generator samples")
 parser.add_argument("--checkpoint_interval",
                     type=int,
@@ -244,7 +244,7 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         # Adversarial ground truths
         valid = torch.ones((real_A.size(0), *D_A.output_shape),
-                           requires_grad=False).to(device)
+                           requires_grad=False).to(device) # D输出的是PatchGAN, 为N*N的矩阵每个元素的值代表其感受野真假
         fake = torch.zeros((real_A.size(0), *D_A.output_shape),
                            requires_grad=False).to(device)
 
@@ -259,15 +259,15 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         # GAN loss
         fake_B = G_AB(real_A)
-        loss_GAN_AB = adversarial_loss(D_B(fake_B), valid)
+        loss_GAN_AB = adversarial_loss(D_B(fake_B), valid) # 与全1矩阵求MSEloss, D输出判断真假(每个元素的值代表其感受野为真的概率)
         fake_A = G_BA(real_B)
         loss_GAN_BA = adversarial_loss(D_A(fake_A), valid)
 
-        loss_GAN = (loss_GAN_AB + loss_GAN_BA) / 2
+        loss_GAN = (loss_GAN_AB + loss_GAN_BA) / 2  # 生成器loss, 即判别器输出概率与真的差值
 
         # Pixelwise translation loss
-        loss_pixelwise = (pixelwise_loss(fake_A, real_A) +
-                          pixelwise_loss(fake_B, real_B)) / 2
+        # loss_pixelwise = (pixelwise_loss(fake_A, real_A) +
+        #                   pixelwise_loss(fake_B, real_B)) / 2 # TODO: 没啥用感觉, 因为不是有监督的
 
         # Cycle loss
         loss_cycle_A = cycle_loss(G_BA(fake_B), real_A)
@@ -275,7 +275,7 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         loss_cycle = (loss_cycle_A + loss_cycle_B) / 2
 
         # Total loss
-        loss_G = loss_GAN + loss_cycle + loss_pixelwise
+        loss_G = loss_GAN + loss_cycle # 删去了pixelwise loss
 
         # tensorboard print loss G
         writer.add_scalar('G_total_loss',
@@ -296,7 +296,7 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         # Fake loss (on batch of previously generated samples)
         loss_fake = adversarial_loss(D_A(fake_A.detach()), fake)
         # Total loss
-        loss_D_A = (loss_real + loss_fake) / 2
+        loss_D_A = (loss_real + loss_fake) / 2 # D需要real_loss, fake_loss均小, 即real判定接近1, fake判定接近0
 
         loss_D_A.backward()
         optimizer_D_A.step()
@@ -335,7 +335,7 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         # Print log
         if i % 100 == 0:
             tqdm.write(
-                "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, pixel: %f, cycle: %f]"
+                "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f]"
                 % (
                     epoch,
                     args.n_epochs,
@@ -344,7 +344,7 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
                     loss_D.item(),
                     loss_G.item(),
                     loss_GAN.item(),
-                    loss_pixelwise.item(),
+                    # loss_pixelwise.item(), # , pixel: %f
                     loss_cycle.item(),
                 ))
 
