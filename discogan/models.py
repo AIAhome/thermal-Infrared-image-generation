@@ -55,9 +55,11 @@ class UNetUp(nn.Module):
 
         return x
 
+
 ##############################
 #        Gannerator
 ##############################
+
 
 class GeneratorUNet(nn.Module):
 
@@ -79,6 +81,12 @@ class GeneratorUNet(nn.Module):
                               dropout=0.5)
         self.down6 = UNetDown(self.channel_num * 8,
                               self.channel_num * 8,
+                              dropout=0.5)
+        self.down7 = UNetDown(self.channel_num * 8,
+                              self.channel_num * 8,
+                              dropout=0.5)
+        self.down8 = UNetDown(self.channel_num * 8,
+                              self.channel_num * 8,
                               dropout=0.5,
                               normalize=False)
 
@@ -89,10 +97,16 @@ class GeneratorUNet(nn.Module):
                           self.channel_num * 8,
                           dropout=0.5)
         self.up3 = UNetUp(self.channel_num * 8 * 2,
+                          self.channel_num * 8,
+                          dropout=0.5)
+        self.up4 = UNetUp(self.channel_num * 8 * 2,
+                          self.channel_num * 8,
+                          dropout=0.5)
+        self.up5 = UNetUp(self.channel_num * 8 * 2,
                           self.channel_num * 4,
                           dropout=0.5)
-        self.up4 = UNetUp(self.channel_num * 4 * 2, self.channel_num * 2)
-        self.up5 = UNetUp(self.channel_num * 2 * 2, self.channel_num)  # 1/2
+        self.up6 = UNetUp(self.channel_num * 4 * 2, self.channel_num * 2)
+        self.up7 = UNetUp(self.channel_num * 2 * 2, self.channel_num)  # 1/2
 
         self.final = nn.Sequential(
             nn.Upsample(scale_factor=2),
@@ -112,15 +126,19 @@ class GeneratorUNet(nn.Module):
         d4 = self.down4(d3)  # (16, 16, channel_num*4)
         d5 = self.down5(d4)  # (8, 8, channel_num*8)
         d6 = self.down6(d5)  # (4, 4, channel_num*8)
+        d7 = self.down7(d6)  # (2, 2, channel_num*8)
+        d8 = self.down8(d7)  # (1, 1, channel_num*8)
 
         # 特征融合, feature map在channels层面堆叠
-        u1 = self.up1(d6, d5)  # (8, 8, channel_num*8*2)
-        u2 = self.up2(u1, d4)  # (16, 16, channel_num*8*2)
-        u3 = self.up3(u2, d3)  # (32, 32, channel_num*4*2)
-        u4 = self.up4(u3, d2)  # (64, 64, channel_num*2*2)
-        u5 = self.up5(u4, d1)  # (128, 128, channel_num*2)
+        u1 = self.up1(d8, d7)  # (2, 2, channel_num*8*2)
+        u2 = self.up2(u1, d6)  # (4, 4, channel_num*8*2)
+        u3 = self.up3(u2, d5)  # (8, 8, channel_num*8*2)
+        u4 = self.up4(u3, d4)  # (16, 16, channel_num*8*2)
+        u5 = self.up5(u4, d3)  # (32, 32, channel_num*4*2)
+        u6 = self.up6(u5, d2)  # (64, 64, channel_num*2*2)
+        u7 = self.up7(u6, d1)  # (128, 128, channel_num*2)
 
-        return self.final(u5)  # (256, 256, out_channel)
+        return self.final(u7)  # (256, 256, out_channel)
 
 
 ##############################
@@ -130,19 +148,21 @@ class GeneratorUNet(nn.Module):
 
 class Discriminator(nn.Module):
 
-    def __init__(self, input_shape, channel_num = 64):
+    def __init__(self, input_shape, channel_num=64):
         super(Discriminator, self).__init__()
 
-        self.channel_num = channel_num # D基础通道数
+        self.channel_num = channel_num  # D基础通道数
         channels, height, width = input_shape
 
         # Calculate output of image discriminator (PatchGAN)
-        self.output_shape = (1, height // 2**3, width // 2**3) # out = in/2 three times
+        self.output_shape = (1, height // 2**3, width // 2**3
+                             )  # out = in/2 three times
 
         def discriminator_block(in_filters, out_filters, normalization=True):
             """Returns downsampling layers of each discriminator block"""
             layers = [
-                nn.Conv2d(in_filters, out_filters, 4, stride=2, padding=1) # out = in/2
+                nn.Conv2d(in_filters, out_filters, 4, stride=2,
+                          padding=1)  # out = in/2
             ]
             if normalization:
                 layers.append(nn.InstanceNorm2d(out_filters))
@@ -151,13 +171,18 @@ class Discriminator(nn.Module):
 
         # input (256, 256, channels)
         self.model = nn.Sequential(
-            *discriminator_block(channels, self.channel_num, normalization=False), # (128, 128, channel_num)
-            *discriminator_block(self.channel_num, self.channel_num*2), # (64, 64, channel_num*2)
-            *discriminator_block(self.channel_num*2, self.channel_num*4), # (32, 32, channel_num*4)
+            *discriminator_block(
+                channels, self.channel_num,
+                normalization=False),  # (128, 128, channel_num)
+            *discriminator_block(self.channel_num, self.channel_num *
+                                 2),  # (64, 64, channel_num*2)
+            *discriminator_block(self.channel_num * 2, self.channel_num *
+                                 4),  # (32, 32, channel_num*4)
             # Pads the input tensor boundaries with zero. left, right, top, bottom
             nn.ZeroPad2d((1, 0, 1, 0)),
-            nn.Conv2d(self.channel_num*4 , 1, kernel_size = 4, padding=1))  # (32, 32, 1)
-            # 输出的是32*32的矩阵, 每个x代表判别器对输入图像一部分(感受野)的判别, 这就是PatchGAN的思想
+            nn.Conv2d(self.channel_num * 4, 1, kernel_size=4,
+                      padding=1))  # (32, 32, 1)
+        # 输出的是32*32的矩阵, 每个x代表判别器对输入图像一部分(感受野)的判别, 这就是PatchGAN的思想
 
     def forward(self, img):
         # Concatenate image and condition image by channels to produce input

@@ -72,7 +72,7 @@ parser.add_argument(
     help='channels of the dataset_a')  # 原始rgb图像为channels=3, 如果转成灰度图就是1
 parser.add_argument('--b_channels',
                     type=int,
-                    default=1,
+                    default=3,
                     help='channels of the dataset_b')
 parser.add_argument("--img_height",
                     type=int,
@@ -107,7 +107,8 @@ os.makedirs("%s/runs/%s" % (args.log_path, timestamp), exist_ok=True)
 # Losses
 adversarial_loss = torch.nn.MSELoss()
 cycle_loss = torch.nn.L1Loss()
-pixelwise_loss = torch.nn.L1Loss()
+identity_loss = torch.nn.L1Loss()
+# pixelwise_loss = torch.nn.L1Loss()
 
 # Initialize generator and discriminator
 a_input_shape = (args.a_channels, args.img_height, args.img_width)
@@ -124,7 +125,8 @@ D_A = D_A.to(device)
 D_B = D_B.to(device)
 adversarial_loss.to(device)
 cycle_loss.to(device)
-pixelwise_loss.to(device)
+identity_loss.to(device)
+# pixelwise_loss.to(device)
 
 if args.epoch != 0:
     # Load pretrained models
@@ -173,6 +175,7 @@ A_transforms = [
 ]
 
 B_transforms = [
+    transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(size=args.img_height),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.ToTensor(),
@@ -228,8 +231,6 @@ def sample_images(batches_done, device):
 #  Training
 # ----------
 
-prev_time = time.time()
-
 writer = SummaryWriter('%s/runs/%s' % (args.log_path, timestamp))
 
 for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
@@ -244,7 +245,8 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         # Adversarial ground truths
         valid = torch.ones((real_A.size(0), *D_A.output_shape),
-                           requires_grad=False).to(device) # D输出的是PatchGAN, 为N*N的矩阵每个元素的值代表其感受野真假
+                           requires_grad=False).to(
+                               device)  # D输出的是PatchGAN, 为N*N的矩阵每个元素的值代表其感受野真假
         fake = torch.zeros((real_A.size(0), *D_A.output_shape),
                            requires_grad=False).to(device)
 
@@ -259,7 +261,8 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         # GAN loss
         fake_B = G_AB(real_A)
-        loss_GAN_AB = adversarial_loss(D_B(fake_B), valid) # 与全1矩阵求MSEloss, D输出判断真假(每个元素的值代表其感受野为真的概率)
+        loss_GAN_AB = adversarial_loss(
+            D_B(fake_B), valid)  # 与全1矩阵求MSEloss, D输出判断真假(每个元素的值代表其感受野为真的概率)
         fake_A = G_BA(real_B)
         loss_GAN_BA = adversarial_loss(D_A(fake_A), valid)
 
@@ -274,8 +277,13 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         loss_cycle_B = cycle_loss(G_AB(fake_A), real_B)
         loss_cycle = (loss_cycle_A + loss_cycle_B) / 2
 
+        # Identity loss
+        loss_identity_A = identity_loss(G_BA(real_A), real_A)
+        loss_identity_B = identity_loss(G_AB(real_B), real_B)
+        loss_identity = (loss_identity_A + loss_identity_B) / 2
+
         # Total loss
-        loss_G = loss_GAN + loss_cycle # 删去了pixelwise loss
+        loss_G = loss_GAN + loss_cycle + loss_identity  # 删去了pixelwise loss
 
         # tensorboard print loss G
         writer.add_scalar('G_total_loss',
@@ -296,7 +304,8 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         # Fake loss (on batch of previously generated samples)
         loss_fake = adversarial_loss(D_A(fake_A.detach()), fake)
         # Total loss
-        loss_D_A = (loss_real + loss_fake) / 2 # D需要real_loss, fake_loss均小, 即real判定接近1, fake判定接近0
+        loss_D_A = (loss_real + loss_fake
+                    ) / 2  # D需要real_loss, fake_loss均小, 即real判定接近1, fake判定接近0
 
         loss_D_A.backward()
         optimizer_D_A.step()
@@ -333,20 +342,20 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         prev_time = time.time()
 
         # Print log
-        if i % 100 == 0:
-            tqdm.write(
-                "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f]"
-                % (
-                    epoch,
-                    args.n_epochs,
-                    i,
-                    len(dataloader),
-                    loss_D.item(),
-                    loss_G.item(),
-                    loss_GAN.item(),
-                    # loss_pixelwise.item(), # , pixel: %f
-                    loss_cycle.item(),
-                ))
+        # if i % 100 == 0:
+        #     tqdm.write(
+        #         "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f]"
+        #         % (
+        #             epoch,
+        #             args.n_epochs,
+        #             i,
+        #             len(dataloader),
+        #             loss_D.item(),
+        #             loss_G.item(),
+        #             loss_GAN.item(),
+        #             # loss_pixelwise.item(), # , pixel: %f
+        #             loss_cycle.item(),
+        #         ))
 
         # If at sample interval save image
         if batches_done % args.sample_interval == 0:
