@@ -11,14 +11,15 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": [ "--n_epochs","1000",
-                "--batch_size","4",
+            "args": [ "--n_epochs","100",
+                "--batch_size","8",
                 "--log_path","/root/thermal-Infrared-image-generation/dualGAN/log",
                 "--data_path","/root/autodl-tmp/FLIR_ADAS_v2",
                 "--output_path","/root/autodl-tmp/output/dualGAN",
-                "--a_channels","1",
-                "--b_channels","1",
-                "--checkpoint_interval","400"]
+                "--a_channels","3",
+                "--b_channels","3",
+                "--checkpoint_interval","4",
+                "--n_critic","2"]
         }
     ]
 }
