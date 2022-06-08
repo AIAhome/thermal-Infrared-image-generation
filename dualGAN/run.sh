@@ -1,9 +1,12 @@
 python3 dualgan.py \
  --n_epochs=50\
- --batch_size=4\
+ --batch_size=3\
  --data_path="/root/autodl-tmp/FLIR_ADAS_v2"\
  --log_path="/root/thermal-Infrared-image-generation/dualGAN/log"\
  --output_path="/root/autodl-tmp/output/dualGAN"\
- --a_channels=1\
- --b_channels=1\
- --checkpoint_interval=400
+ --a_channels=3\
+ --b_channels=3\
+ --checkpoint_interval=10\
+ --n_critic=2\
+ --sample_interval=800\
+ --warmup_epoches=1
