@@ -7,6 +7,6 @@ python3 dualgan.py \
  --a_channels=3\
  --b_channels=3\
  --checkpoint_interval=10\
- --n_critic=2\
+ --n_critic=1\
  --sample_interval=800\
- --warmup_epoches=1
+ --warmup_epoches=0\

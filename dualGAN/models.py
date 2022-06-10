@@ -149,10 +149,10 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, img_1,img_2):
-        return F.sigmoid(self.model(img_1)-torch.mean(self.model(img_2)))
+        return F.sigmoid(self.model(img_1)-torch.mean(self.model(img_2),dim=0))
     
     def get_raw_output(self,img):
-        return self.model(img)
+        return self.model(img)#(b,1,6,6)
 
 
 #-----------

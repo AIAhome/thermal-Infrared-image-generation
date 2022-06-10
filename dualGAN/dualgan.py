@@ -57,6 +57,7 @@ args = parser.parse_args()
 print(args)
 
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+# timestamp = "20220608_141103"
 
 os.makedirs("%s/images/%s" % (args.log_path,timestamp), exist_ok=True)
 os.makedirs("%s/runs/%s" % (args.log_path,timestamp), exist_ok=True)
@@ -89,18 +90,26 @@ if cuda:
     cycle_loss.cuda()
     content_loss.cuda()
 
-if args.epoch != 0:
-    # Load pretrained models
-    G_AB.load_state_dict(torch.load("%s/saved_models/G_AB_%d.pth" % (args.output_path, args.epoch)))
-    G_BA.load_state_dict(torch.load("%s/saved_models/G_BA_%d.pth" % (args.output_path, args.epoch)))
-    D_A.load_state_dict(torch.load("%s/saved_models/D_A_%d.pth" % (args.output_path, args.epoch)))
-    D_B.load_state_dict(torch.load("%s/saved_models/D_B_%d.pth" % (args.output_path, args.epoch)))
-else:
-    # Initialize weights
-    G_AB.apply(weights_init_normal)
-    G_BA.apply(weights_init_normal)
-    D_A.apply(weights_init_normal)
-    D_B.apply(weights_init_normal)
+# if args.epoch != 0:
+#     # Load pretrained models
+#     G_AB.load_state_dict(torch.load("%s/saved_models/%s/G_AB_%d.pth" % (args.output_path, timestamp, args.epoch)))
+#     G_BA.load_state_dict(torch.load("%s/saved_models/%s/G_BA_%d.pth" % (args.output_path, timestamp, args.epoch)))
+#     D_A.load_state_dict(torch.load("%s/saved_models/%s/D_A_%d.pth" % (args.output_path,  timestamp, args.epoch)))
+#     D_B.load_state_dict(torch.load("%s/saved_models/%s/D_B_%d.pth" % (args.output_path,  timestamp, args.epoch)))
+# else:
+#     # Initialize weights
+#     G_AB.apply(weights_init_normal)
+#     G_BA.apply(weights_init_normal)
+#     D_A.apply(weights_init_normal)
+#     D_B.apply(weights_init_normal)
+
+# Load pretrained models
+G_AB.load_state_dict(torch.load("%s/saved_models/%s/G_AB_%d.pth" % (args.output_path, "20220608_141103", 70)))
+G_BA.load_state_dict(torch.load("%s/saved_models/%s/G_BA_%d.pth" % (args.output_path, "20220608_141103", 70)))
+# Initialize weights
+D_A.apply(weights_init_normal)
+D_B.apply(weights_init_normal)
+
 
 # Configure dataloader
 A_transforms = [
@@ -206,6 +215,7 @@ writer= SummaryWriter('%s/runs/%s'%(args.log_path,timestamp))
 batches_done = 0
 t = 0
 for epoch in range(args.n_epochs):
+    epoch += args.epoch
     print("[epoch]:",str(epoch))
     for i, batch in tqdm(enumerate(train_dataloader),desc="batches training",total=len(train_dataloader)):
 
