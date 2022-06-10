@@ -72,7 +72,7 @@ parser.add_argument(
     help='channels of the dataset_a')  # 原始rgb图像为channels=3, 如果转成灰度图就是1
 parser.add_argument('--b_channels',
                     type=int,
-                    default=3,
+                    default=1,
                     help='channels of the dataset_b')
 parser.add_argument("--img_height",
                     type=int,
@@ -94,6 +94,26 @@ parser.add_argument("--gray",
                     type=bool,
                     default=False,
                     help='whether to gray the input image')
+parser.add_argument("--lambda_adv",
+                    type=float,
+                    default=1,
+                    help="adversarial loss weight")
+parser.add_argument("--lambda_cycle",
+                    type=float,
+                    default=1,
+                    help="cycle loss weight")
+parser.add_argument("--lambda_perceptual",
+                    type=float,
+                    default=0.05,
+                    help="identity loss weight")
+parser.add_argument("--lambda_content",
+                    type=float,
+                    default=1,
+                    help="content loss weight")
+parser.add_argument("--warmup_epoch",
+                    type=int,
+                    default=1,
+                    help="number of epoches only cycle and content")
 args = parser.parse_args()
 print(args)
 
@@ -107,7 +127,9 @@ os.makedirs("%s/runs/%s" % (args.log_path, timestamp), exist_ok=True)
 # Losses
 adversarial_loss = torch.nn.MSELoss()
 cycle_loss = torch.nn.L1Loss()
-identity_loss = torch.nn.L1Loss()
+# identity_loss = torch.nn.L1Loss()
+perceptual_loss = torch.nn.L1Loss()
+content_loss = torch.nn.L1Loss()
 # pixelwise_loss = torch.nn.L1Loss()
 
 # Initialize generator and discriminator
@@ -117,6 +139,7 @@ G_AB = GeneratorUNet(args.a_channels, args.b_channels)
 G_BA = GeneratorUNet(args.b_channels, args.a_channels)
 D_A = Discriminator(a_input_shape)
 D_B = Discriminator(b_input_shape)
+vgg_feature_extractor = FeatureExtractor()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 G_AB = G_AB.to(device)
@@ -125,8 +148,14 @@ D_A = D_A.to(device)
 D_B = D_B.to(device)
 adversarial_loss.to(device)
 cycle_loss.to(device)
-identity_loss.to(device)
+# identity_loss.to(device)
+perceptual_loss.to(device)
+content_loss.to(device)
+vgg_feature_extractor.to(device)
 # pixelwise_loss.to(device)
+
+# Set feature extractor to inference mode
+vgg_feature_extractor.eval()
 
 if args.epoch != 0:
     # Load pretrained models
@@ -206,21 +235,31 @@ def sample_images(batches_done, device):
     """Saves a generated sample from the validation set"""
     nrow = 5
     imgs = next(iter(val_dataloader))
+    eval_B_transforms = transforms.Compose([transforms.Grayscale(num_output_channels=1)])
     G_AB.eval()
     G_BA.eval()
     real_A = imgs['A'].to(device)
     fake_B = G_AB(real_A)
+    cycle_A = G_BA(fake_B)
     real_B = imgs['B'].to(device)
     fake_A = G_BA(real_B)
+    cycle_B = G_AB(fake_A)
+
+    # 红外图的通道重设为1
+    gray_fake_B = eval_B_transforms(fake_B)
+    gray_cycle_B = eval_B_transforms(cycle_B)
 
     # Arange images along x-axis
     real_A = make_grid(real_A, nrow=nrow, normalize=True)  # 拼成一副图像
     real_B = make_grid(real_B, nrow=nrow, normalize=True)
     fake_A = make_grid(fake_A, nrow=nrow, normalize=True)
     fake_B = make_grid(fake_B, nrow=nrow, normalize=True)
-    img_sample = torch.cat(
-        (real_A.data, fake_B.data, real_B.data, fake_A.data),
-        1)  # 上下拼接(0是channel)
+    gray_fake_B = make_grid(gray_fake_B, nrow=nrow, normalize=True)
+    cycle_A = make_grid(cycle_A, nrow=nrow, normalize=True)
+    gray_cycle_B = make_grid(gray_cycle_B, nrow=nrow, normalize=True)
+    img_sample = torch.cat((real_A.data, fake_B.data, gray_fake_B.data, cycle_A.data,
+                            real_B.data, fake_A.data, gray_cycle_B.data),
+                           1)  # 上下拼接(0是channel)
     save_image(img_sample,
                "%s/images/%s/%s.png" %
                (args.output_path, timestamp, batches_done),
@@ -232,6 +271,10 @@ def sample_images(batches_done, device):
 # ----------
 
 writer = SummaryWriter('%s/runs/%s' % (args.log_path, timestamp))
+lambda_adv = args.lambda_adv
+lambda_cycle = args.lambda_cycle
+lambda_perceptual = args.lambda_perceptual
+lambda_content = args.lambda_content
 
 for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
     for i, batch in enumerate(
@@ -277,18 +320,37 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         loss_cycle_B = cycle_loss(G_AB(fake_A), real_B)
         loss_cycle = (loss_cycle_A + loss_cycle_B) / 2
 
-        # Identity loss
-        loss_identity_A = identity_loss(G_BA(real_A), real_A)
-        loss_identity_B = identity_loss(G_AB(real_B), real_B)
-        loss_identity = (loss_identity_A + loss_identity_B) / 2
+        # # Identity loss
+        # loss_identity_A = identity_loss(G_BA(real_A), real_A)
+        # loss_identity_B = identity_loss(G_AB(real_B), real_B)
+        # loss_identity = (loss_identity_A + loss_identity_B) / 2
+
+        # Content loss
+        cycle_A_features = vgg_feature_extractor(G_BA(fake_B))
+        real_A_features = vgg_feature_extractor(real_A).detach()
+        cycle_B_features = vgg_feature_extractor(G_AB(fake_A))
+        real_B_features = vgg_feature_extractor(real_B).detach()
+        loss_content_A = content_loss(cycle_A_features, real_A_features)
+        loss_content_B = content_loss(cycle_B_features, real_B_features)
+        loss_content = (loss_content_A + loss_content_B) / 2
+
+        # Perceptual loss
+        fake_A_features = vgg_feature_extractor(fake_A)
+        fake_B_features = vgg_feature_extractor(fake_B)
+        loss_perceptual_A = perceptual_loss(fake_A_features, real_A_features)
+        loss_perceptual_B = perceptual_loss(fake_B_features, real_B_features)
+        loss_perceptual = (loss_perceptual_A + loss_perceptual_B) / 2
+
+        # Pre-train only cycle loss and content loss
+        if epoch < args.warmup_epoch:
+            lambda_adv = 0
+            lambda_perceptual = 0
+        else:
+            lambda_adv = args.lambda_adv
+            lambda_perceptual = args.lambda_perceptual
 
         # Total loss
-        loss_G = loss_GAN + loss_cycle + loss_identity  # 删去了pixelwise loss
-
-        # tensorboard print loss G
-        writer.add_scalar('G_total_loss',
-                          loss_G,
-                          global_step=epoch * len(dataloader) + i)
+        loss_G = lambda_adv * loss_GAN + lambda_cycle * loss_cycle + lambda_perceptual * loss_perceptual + lambda_content * loss_content  # 删去了pixelwise loss # TODO: 调参比例
 
         loss_G.backward()
         optimizer_G.step()
@@ -327,10 +389,12 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         loss_D = 0.5 * (loss_D_A + loss_D_B)
 
-        # tensorboard print loss D
-        writer.add_scalar('D_loss',
-                          loss_D,
-                          global_step=epoch * len(dataloader) + i)
+        # tensorboard print loss G&D
+        writer.add_scalars('Loss', {
+            'G_loss': loss_G,
+            'D_loss': loss_D
+        },
+                           global_step=epoch * len(dataloader) + i)
 
         # --------------
         #  Log Progress
