@@ -1,14 +1,15 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from torchvision.models import vgg19
 
 
 def weights_init_normal(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
-        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+        torch.nn.init.xavier_normal(m.weight.data)
     elif classname.find("BatchNorm2d") != -1:
-        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.xavier_normal_(m.weight.data)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
 
@@ -187,3 +188,21 @@ class Discriminator(nn.Module):
     def forward(self, img):
         # Concatenate image and condition image by channels to produce input
         return self.model(img)
+
+
+##############################
+#       FeatureExtractor
+##############################
+
+
+class FeatureExtractor(nn.Module):
+
+    def __init__(self):
+        super(FeatureExtractor, self).__init__()
+        vgg19_model = vgg19(pretrained=True)
+        self.vgg19_54 = nn.Sequential(
+            *list(vgg19_model.features.children())[:35])
+
+    def forward(self, img):
+        return self.vgg19_54(img)
+
