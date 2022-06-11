@@ -20,47 +20,54 @@ from utils import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-
+from torch.utils.tensorboard import SummaryWriter
+log = []
+writer = SummaryWriter()
+# 定义参数
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--dataset_name", type=str, default="monet2photo", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+parser.add_argument("--n_epochs", type=int, default=50, help="number of epochs of training")
+parser.add_argument("--dataset_name", type=str, default="dataset", help="name of the dataset")
+parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--decay_epoch", type=int, default=25, help="epoch from which to start lr decay")
+parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
 parser.add_argument("--img_height", type=int, default=256, help="size of image height")
 parser.add_argument("--img_width", type=int, default=256, help="size of image width")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator outputs")
-parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
+parser.add_argument("--sample_interval", type=int, default=2000, help="interval between saving generator outputs")
+parser.add_argument("--checkpoint_interval", type=int, default=25, help="interval between saving model checkpoints")
 parser.add_argument("--n_residual_blocks", type=int, default=9, help="number of residual blocks in generator")
 parser.add_argument("--lambda_cyc", type=float, default=10.0, help="cycle loss weight")
 parser.add_argument("--lambda_id", type=float, default=5.0, help="identity loss weight")
+parser.add_argument('--warmup_epoches',type=int,default=1,help='number of epoches without adv loss')
 opt = parser.parse_args()
 print(opt)
-
-# Create sample and checkpoint directories
+# 创建采样图像保存路径和模型参数保存路径
 os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
 os.makedirs("saved_models/%s" % opt.dataset_name, exist_ok=True)
 
-# Losses
+# 损失函数
 criterion_GAN = torch.nn.MSELoss()
 criterion_cycle = torch.nn.L1Loss()
 criterion_identity = torch.nn.L1Loss()
-
-cuda = torch.cuda.is_available()
+content_loss = torch.nn.L1Loss()
 
 input_shape = (opt.channels, opt.img_height, opt.img_width)
 
-# Initialize generator and discriminator
+# 初始化生成器和鉴别器
 G_AB = GeneratorResNet(input_shape, opt.n_residual_blocks)
 G_BA = GeneratorResNet(input_shape, opt.n_residual_blocks)
 D_A = Discriminator(input_shape)
 D_B = Discriminator(input_shape)
+# 定义特征提取器
+encoder = FeatureExtractor()
+encoder.eval()
 
+cuda = torch.cuda.is_available()
+#cuda
 if cuda:
     G_AB = G_AB.cuda()
     G_BA = G_BA.cuda()
@@ -69,15 +76,15 @@ if cuda:
     criterion_GAN.cuda()
     criterion_cycle.cuda()
     criterion_identity.cuda()
-
+    content_loss.cuda()
 if opt.epoch != 0:
-    # Load pretrained models
+    # 如果epoch不是从0 开始，则 Load 预训练模型
     G_AB.load_state_dict(torch.load("saved_models/%s/G_AB_%d.pth" % (opt.dataset_name, opt.epoch)))
     G_BA.load_state_dict(torch.load("saved_models/%s/G_BA_%d.pth" % (opt.dataset_name, opt.epoch)))
     D_A.load_state_dict(torch.load("saved_models/%s/D_A_%d.pth" % (opt.dataset_name, opt.epoch)))
     D_B.load_state_dict(torch.load("saved_models/%s/D_B_%d.pth" % (opt.dataset_name, opt.epoch)))
 else:
-    # Initialize weights
+    # 否则初始化参数
     G_AB.apply(weights_init_normal)
     G_BA.apply(weights_init_normal)
     D_A.apply(weights_init_normal)
@@ -118,14 +125,14 @@ transforms_ = [
 
 # Training data loader
 dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
+    ImageDataset("/data/shenliao/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
     batch_size=opt.batch_size,
     shuffle=True,
     num_workers=opt.n_cpu,
 )
 # Test data loader
 val_dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
+    ImageDataset("/data/shenliao/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
     batch_size=5,
     shuffle=True,
     num_workers=1,
@@ -141,25 +148,33 @@ def sample_images(batches_done):
     fake_B = G_AB(real_A)
     real_B = Variable(imgs["B"].type(Tensor))
     fake_A = G_BA(real_B)
+    cycle_A = G_BA(G_AB(real_A))
+    cycle_B = G_AB(G_BA(real_B)) 
     # Arange images along x-axis
     real_A = make_grid(real_A, nrow=5, normalize=True)
     real_B = make_grid(real_B, nrow=5, normalize=True)
     fake_A = make_grid(fake_A, nrow=5, normalize=True)
     fake_B = make_grid(fake_B, nrow=5, normalize=True)
+    cycle_A = make_grid(cycle_A, nrow=5, normalize=True)
+    cycle_B = make_grid(cycle_B, nrow=5, normalize=True)
     # Arange images along y-axis
-    image_grid = torch.cat((real_A, fake_B, real_B, fake_A), 1)
+    image_grid = torch.cat((real_A, fake_B, cycle_A, real_B, fake_A, cycle_B), 1)
     save_image(image_grid, "images/%s/%s.png" % (opt.dataset_name, batches_done), normalize=False)
-
 
 # ----------
 #  Training
 # ----------
 
 prev_time = time.time()
-for epoch in range(opt.epoch, opt.n_epochs):
+for epoch in range(opt.epoch, opt.n_epochs+1):
+    G_loss=0
+    D_loss=0
+    GAN_loss=0
+    cycle_loss=0
+    identity_loss=0
     for i, batch in enumerate(dataloader):
 
-        # Set model input
+        # 真实图像
         real_A = Variable(batch["A"].type(Tensor))
         real_B = Variable(batch["B"].type(Tensor))
 
@@ -197,9 +212,16 @@ for epoch in range(opt.epoch, opt.n_epochs):
         loss_cycle_B = criterion_cycle(recov_B, real_B)
 
         loss_cycle = (loss_cycle_A + loss_cycle_B) / 2
-
+        
+        emb_recov_B = encoder(recov_B)
+        emb_imgs_A = encoder(real_A).detach()
+        emb_recov_A = encoder(recov_A)
+        emb_imgs_B = encoder(real_B).detach()
         # Total loss
-        loss_G = loss_GAN + opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity
+        if epoch < opt.warmup_epoches:
+          loss_G = opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_cyc*0.5*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_cyc*0.5*content_loss(emb_recov_A,emb_imgs_A)
+        else:
+          loss_G = loss_GAN + opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_cyc*0.5*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_cyc*0.5*content_loss(emb_recov_A,emb_imgs_A) 
 
         loss_G.backward()
         optimizer_G.step()
@@ -244,7 +266,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
         #  Log Progress
         # --------------
 
-        # Determine approximate time left
+        # 确定大约剩余时间
         batches_done = epoch * len(dataloader) + i
         batches_left = opt.n_epochs * len(dataloader) - batches_done
         time_left = datetime.timedelta(seconds=batches_left * (time.time() - prev_time))
@@ -266,19 +288,47 @@ for epoch in range(opt.epoch, opt.n_epochs):
                 time_left,
             )
         )
-
-        # If at sample interval save image
+        log.append("\n[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f, identity: %f] ETA: %s"
+            % (
+                epoch,
+                opt.n_epochs,
+                i,
+                len(dataloader),
+                loss_D.item(),
+                loss_G.item(),
+                loss_GAN.item(),
+                loss_cycle.item(),
+                loss_identity.item(),
+                time_left,
+            ))
+        # 记录一个epoch的平均loss
+        D_loss+=loss_D.item()/len(dataloader)
+        G_loss+=loss_G.item()/len(dataloader)
+        GAN_loss+=loss_GAN.item()/len(dataloader)
+        cycle_loss+=loss_cycle.item()/len(dataloader)
+        identity_loss+=loss_identity.item()/len(dataloader)
+        # 满足采样间隔后，采样图像
         if batches_done % opt.sample_interval == 0:
             sample_images(batches_done)
 
-    # Update learning rates
+    # 更新学习率
     lr_scheduler_G.step()
     lr_scheduler_D_A.step()
     lr_scheduler_D_B.step()
-
+    # 记录tensorboard
+    writer.add_scalar('D loss', D_loss, epoch)
+    writer.add_scalar('G loss', G_loss, epoch)
+    writer.add_scalar('GAN loss', GAN_loss, epoch)
+    writer.add_scalar('cycle loss', cycle_loss, epoch)
+    writer.add_scalar('identity loss', identity_loss, epoch)
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
-        # Save model checkpoints
+        # 保存模型 checkpoints
         torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name, epoch))
         torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name, epoch))
         torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name, epoch))
         torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name, epoch))
+writer.close()
+# 将loss写入loss.txt
+with open('./loss.txt', 'w+') as f:
+        for i in range(len(log)):
+            f.write(log[i])
