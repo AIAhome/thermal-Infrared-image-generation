@@ -1,0 +1,8 @@
+__pycache__/
+log/
+.vscode/
+discogan/data
+discogan/log
+discogan/output
+discogan/*.log
+discogan/__pycache__
