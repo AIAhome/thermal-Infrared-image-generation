@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-
+from torchvision.models import vgg19
 
 def weights_init_normal(m):
     classname = m.__class__.__name__
@@ -120,3 +120,16 @@ class Discriminator(nn.Module):
 
     def forward(self, img):
         return self.model(img)
+        
+##############################
+#       Feature Extractor
+##############################
+
+class FeatureExtractor(nn.Module):
+    def __init__(self):
+        super(FeatureExtractor, self).__init__()
+        vgg19_model = vgg19(pretrained=True).cuda()
+        self.vgg19_54 = nn.Sequential(*list(vgg19_model.features.children())[:35])
+
+    def forward(self, img):
+        return self.vgg19_54(img)
