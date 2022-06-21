@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch
 from torchvision.models import vgg19
 
-
+# 权重初始化
 def weights_init_normal(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
@@ -16,8 +16,9 @@ def weights_init_normal(m):
 ##############################
 #           U-NET
 ##############################
+# 定义Unet网络, 只在G中使用
 
-
+# 定义UNetDown部分网络
 class UNetDown(nn.Module):
 
     def __init__(self, in_channe, out_channel, normalize=True, dropout=0.0):
@@ -35,7 +36,7 @@ class UNetDown(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-
+# 定义UNetUp部分网络
 class UNetUp(nn.Module):
 
     def __init__(self, in_channe, out_channel, dropout=0.0):
@@ -45,7 +46,7 @@ class UNetUp(nn.Module):
             nn.InstanceNorm2d(out_channel),
             nn.ReLU(inplace=True)
         ]  # out = (in-1)*stride-2*padding+kernel_size i.e. out = 2*in 上采样二倍
-        if dropout:  # 只有生成器有dropout
+        if dropout: 
             layers.append(nn.Dropout(dropout))
 
         self.model = nn.Sequential(*layers)
@@ -66,8 +67,8 @@ class GeneratorUNet(nn.Module):
 
     def __init__(self, in_channels=3, out_channels=1, channel_num=64):
         super(GeneratorUNet, self).__init__()
-        # channels, _, _ = input_shape
         self.channel_num = channel_num  # G 基础通道数
+
         self.down1 = UNetDown(in_channels, self.channel_num,
                               normalize=False)  # channels=3
         self.down2 = UNetDown(self.channel_num, self.channel_num * 2)
@@ -186,7 +187,6 @@ class Discriminator(nn.Module):
         # 输出的是32*32的矩阵, 每个x代表判别器对输入图像一部分(感受野)的判别, 这就是PatchGAN的思想
 
     def forward(self, img):
-        # Concatenate image and condition image by channels to produce input
         return self.model(img)
 
 
@@ -194,14 +194,14 @@ class Discriminator(nn.Module):
 #       FeatureExtractor
 ##############################
 
-
+# vgg19特征提取器, 用于构建content loss和perceptual loss
 class FeatureExtractor(nn.Module):
 
     def __init__(self):
         super(FeatureExtractor, self).__init__()
         vgg19_model = vgg19(pretrained=True)
         self.vgg19_54 = nn.Sequential(
-            *list(vgg19_model.features.children())[:35])
+            *list(vgg19_model.features.children())[:35]) # 去掉最后的dropout和linear
 
     def forward(self, img):
         return self.vgg19_54(img)
