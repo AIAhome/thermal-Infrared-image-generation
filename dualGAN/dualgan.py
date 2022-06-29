@@ -34,9 +34,9 @@ parser.add_argument("--data_path", type=str, help="path to the dataset")
 parser.add_argument("--log_path",type=str,help="path to store the log")
 parser.add_argument("--output_path",type=str,help="path to saved models and output images")
 parser.add_argument("--g_lr", type=float, default=2e-3, help="adam: generator learning rate")
-parser.add_argument('--d_lr',type=float,default=1e-4,help='adam: discriminator learning rate')
+parser.add_argument('--d_lr',type=float,default=1e-5,help='adam: discriminator learning rate')
 parser.add_argument("--alpha",type=float,default=0.9,help='alpha: smooth factor in RMSProp')
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--b1", type=float, default=0.9, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
 # parser.add_argument("--img_size", type=int, default=256, help="size of each image dimension")
@@ -243,11 +243,11 @@ for epoch in range(args.n_epochs):
         # Compute gradient penalty for improved wasserstein training
         gp_A = compute_gradient_penalty(D_A, imgs_A.data, fake_A.data)
         # Adversarial loss
-        if np.random.random() < 0.7:
+        if np.random.random() < 0.5:
             # D_A_loss = -torch.mean(D_A(imgs_A,fake_A)) + args.negative_ratio*torch.mean(D_A.get_raw_output(negative_A)) + args.lambda_gp * gp_A 
-            D_A_loss = -torch.mean(D_A(imgs_A,fake_A)) + args.lambda_gp * gp_A 
+            D_A_loss = -torch.mean(D_A(imgs_A,fake_B))  + args.lambda_gp * gp_A 
         else:
-            D_A_loss = -torch.mean(D_A(fake_A,imgs_A)) + args.lambda_gp * gp_A 
+            D_A_loss = torch.mean(D_A(fake_B,imgs_A))  + args.lambda_gp * gp_A 
 
         # ----------
         # Domain B
@@ -256,11 +256,11 @@ for epoch in range(args.n_epochs):
         # Compute gradient penalty for improved wasserstein training
         gp_B = compute_gradient_penalty(D_B, imgs_B.data, fake_B.data)
         # Adversarial loss
-        if np.random.random() < 0.7:
+        if np.random.random() < 0.5:
             # D_B_loss = -torch.mean(D_B(imgs_B,fake_B)) + args.negative_ratio*torch.mean(D_B.get_raw_output(negative_B))  + args.lambda_gp * gp_B
-            D_B_loss = -torch.mean(D_B(imgs_B,fake_B)) + args.lambda_gp * gp_B
+            D_B_loss = -torch.mean(D_B(imgs_B,fake_A))  + args.lambda_gp * gp_B
         else:
-            D_B_loss = -torch.mean(D_B(fake_B,imgs_B)) + args.lambda_gp * gp_B
+            D_B_loss = torch.mean(D_B(fake_A,imgs_B))  + args.lambda_gp * gp_B
         
         # Total loss
         D_loss = D_A_loss + D_B_loss
@@ -296,8 +296,8 @@ for epoch in range(args.n_epochs):
             else:
                 lambda_adv = args.lambda_adv
                 # Adversarial loss
-                G_adv = torch.mean(D_A(imgs_A,fake_A))\
-                        + torch.mean(D_B(imgs_B,fake_B))\
+                G_adv =  torch.mean(D_A(imgs_A,fake_B))\
+                        + torch.mean(D_B(imgs_B,fake_A))
                         # - torch.mean(D_A(fake_A,negative_A))\
                         # - torch.mean(D_B(fake_B,negative_B))
             
@@ -352,10 +352,10 @@ for epoch in range(args.n_epochs):
     
         # Log per batch
         if epoch==0 and i==0:
-            # writer.add_graph(D_A,(imgs_A,imgs_A))
+            writer.add_graph(D_A,(imgs_A,imgs_A))
             # writer.add_graph(D_B,(imgs_B,imgs_b))
             # writer.add_graph(G_BA,imgs_B)
-            writer.add_graph(G_AB,imgs_A)
+            # writer.add_graph(G_AB,imgs_A)
         writer.add_scalars('loss',
                         { 'D_loss' : D_loss,"G_loss":G_loss},
                         epoch * len(train_dataloader) + i)
@@ -369,12 +369,4 @@ for epoch in range(args.n_epochs):
         torch.save(G_BA.state_dict(), "%s/saved_models/%s/G_BA_%d.pth" % (args.output_path,timestamp, epoch))
         torch.save(D_A.state_dict(), "%s/saved_models/%s/D_A_%d.pth" % (args.output_path,timestamp, epoch))
         torch.save(D_B.state_dict(), "%s/saved_models/%s/D_B_%d.pth" % (args.output_path,timestamp, epoch))
-        import requests
-        resp = requests.post("https://www.autodl.com/api/v1/wechat/message/push",
-                            json={
-                                "token": "81be739b24fd",
-                                "title": "dualGAN实验",
-                                "name": "50个epoch小实验",
-                                "content": "finish %s epoch"% epoch
-                            })
-        print(resp.content.decode())
+
