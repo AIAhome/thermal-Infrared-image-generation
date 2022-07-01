@@ -12,7 +12,7 @@ from torchvision.utils import save_image, make_grid
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torch.autograd import Variable
-
+import sc_model
 from models import *
 from datasets import *
 from utils import *
@@ -20,15 +20,14 @@ from utils import *
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from torch.utils.tensorboard import SummaryWriter
-log = []
-writer = SummaryWriter()
+# from torch.utils.tensorboard import SummaryWriter
+# writer = SummaryWriter()
 # 定义参数
 parser = argparse.ArgumentParser()
 parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
 parser.add_argument("--n_epochs", type=int, default=50, help="number of epochs of training")
 parser.add_argument("--dataset_name", type=str, default="dataset", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
+parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
@@ -38,11 +37,21 @@ parser.add_argument("--img_height", type=int, default=256, help="size of image h
 parser.add_argument("--img_width", type=int, default=256, help="size of image width")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
 parser.add_argument("--sample_interval", type=int, default=2000, help="interval between saving generator outputs")
-parser.add_argument("--checkpoint_interval", type=int, default=25, help="interval between saving model checkpoints")
+parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model checkpoints")
 parser.add_argument("--n_residual_blocks", type=int, default=9, help="number of residual blocks in generator")
-parser.add_argument("--lambda_cyc", type=float, default=10.0, help="cycle loss weight")
-parser.add_argument("--lambda_id", type=float, default=5.0, help="identity loss weight")
-parser.add_argument('--warmup_epoches',type=int,default=1,help='number of epoches without adv loss')
+parser.add_argument("--lambda_adv", type=float, default=3.0, help="adv loss weight")
+parser.add_argument("--lambda_cyc", type=float, default=8.0, help="cycle loss weight")
+parser.add_argument("--lambda_id", type=float, default=0.0, help="identity loss weight")
+parser.add_argument("--lambda_ct", type=float, default=0.0, help="context loss weight")
+parser.add_argument("--lambda_sc", type=float, default=10.0, help="Spatial Correlative loss weight")
+parser.add_argument('--warmup_epoches',type=int,default=0,help='number of epoches without adv loss')
+parser.add_argument('--attn_layers', type=str, default='4, 7, 9', help='compute spatial loss on which layers')
+parser.add_argument('--patch_nums', type=float, default=256, help='select how many patches for shape consistency, -1 use all')
+parser.add_argument('--patch_size', type=int, default=64, help='patch size to calculate the attention')
+parser.add_argument('--loss_mode', type=str, default='cos', help='which loss type is used, cos | l1 | info')
+parser.add_argument('--use_norm', action='store_true', help='normalize the feature map for FLSeSim')
+parser.add_argument('--learned_attn', action='store_true', help='use the learnable attention map')
+parser.add_argument('--T', type=float, default=0.07, help='temperature for similarity')
 opt = parser.parse_args()
 print(opt)
 # 创建采样图像保存路径和模型参数保存路径
@@ -73,6 +82,7 @@ if cuda:
     G_BA = G_BA.cuda()
     D_A = D_A.cuda()
     D_B = D_B.cuda()
+    netPre = sc_model.VGG16().cuda()
     criterion_GAN.cuda()
     criterion_cycle.cuda()
     criterion_identity.cuda()
@@ -137,9 +147,9 @@ val_dataloader = DataLoader(
     shuffle=True,
     num_workers=1,
 )
+criterionSpatial = sc_model.SpatialCorrelativeLoss(opt.loss_mode, opt.patch_nums, opt.patch_size, opt.use_norm,opt.learned_attn, gpu_ids=0, T=opt.T).cuda()
 
-
-def sample_images(batches_done):
+def sample_images(batch,epoch):
     """Saves a generated sample from the test set"""
     imgs = next(iter(val_dataloader))
     G_AB.eval()
@@ -159,7 +169,28 @@ def sample_images(batches_done):
     cycle_B = make_grid(cycle_B, nrow=5, normalize=True)
     # Arange images along y-axis
     image_grid = torch.cat((real_A, fake_B, cycle_A, real_B, fake_A, cycle_B), 1)
-    save_image(image_grid, "images/%s/%s.png" % (opt.dataset_name, batches_done), normalize=False)
+    save_image(image_grid, "images/%s/%s+%s.png" % (opt.dataset_name, epoch ,batch), normalize=False)
+
+def Spatial_Loss(net, src, tgt, other=None):
+        """给定源图像和目标图像来计算空间相似性和相异性损失"""
+        attn_layers = [int(i) for i in opt.attn_layers.split(',')]
+        n_layers = len(attn_layers)
+        feats_src = net(src, attn_layers, encode_only=True)
+        feats_tgt = net(tgt, attn_layers, encode_only=True)
+        if other is not None:
+            feats_oth = net(torch.flip(other, [2, 3]),attn_layers, encode_only=True)
+        else:
+            feats_oth = [None for _ in range(n_layers)]
+
+        total_loss = 0.0
+        for i, (feat_src, feat_tgt, feat_oth) in enumerate(zip(feats_src, feats_tgt, feats_oth)):
+            loss = criterionSpatial.loss(feat_src, feat_tgt, feat_oth, i)
+            total_loss += loss.mean()
+
+        if not criterionSpatial.conv_init:
+            criterionSpatial.update_init_()
+
+        return total_loss / n_layers
 
 # ----------
 #  Training
@@ -172,6 +203,7 @@ for epoch in range(opt.epoch, opt.n_epochs+1):
     GAN_loss=0
     cycle_loss=0
     identity_loss=0
+    log = []
     for i, batch in enumerate(dataloader):
 
         # 真实图像
@@ -204,7 +236,7 @@ for epoch in range(opt.epoch, opt.n_epochs+1):
         loss_GAN_BA = criterion_GAN(D_A(fake_A), valid)
 
         loss_GAN = (loss_GAN_AB + loss_GAN_BA) / 2
-
+        
         # Cycle loss
         recov_A = G_BA(fake_B)
         loss_cycle_A = criterion_cycle(recov_A, real_A)
@@ -217,11 +249,12 @@ for epoch in range(opt.epoch, opt.n_epochs+1):
         emb_imgs_A = encoder(real_A).detach()
         emb_recov_A = encoder(recov_A)
         emb_imgs_B = encoder(real_B).detach()
+        spatial_loss = Spatial_Loss(netPre, real_A, fake_B, None)
         # Total loss
         if epoch < opt.warmup_epoches:
-          loss_G = opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_cyc*0.5*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_cyc*0.5*content_loss(emb_recov_A,emb_imgs_A)
+          loss_G = opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_ct*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_ct*content_loss(emb_recov_A,emb_imgs_A) + opt.lambda_sc*spatial_loss
         else:
-          loss_G = loss_GAN + opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_cyc*0.5*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_cyc*0.5*content_loss(emb_recov_A,emb_imgs_A) 
+          loss_G = opt.lambda_adv * loss_GAN + opt.lambda_cyc * loss_cycle + opt.lambda_id * loss_identity + opt.lambda_ct*content_loss(emb_recov_B,emb_imgs_B) +  opt.lambda_ct*content_loss(emb_recov_A,emb_imgs_A) + opt.lambda_sc*spatial_loss
 
         loss_G.backward()
         optimizer_G.step()
@@ -271,7 +304,6 @@ for epoch in range(opt.epoch, opt.n_epochs+1):
         batches_left = opt.n_epochs * len(dataloader) - batches_done
         time_left = datetime.timedelta(seconds=batches_left * (time.time() - prev_time))
         prev_time = time.time()
-
         # Print log
         sys.stdout.write(
             "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f, identity: %f] ETA: %s"
@@ -309,26 +341,26 @@ for epoch in range(opt.epoch, opt.n_epochs+1):
         identity_loss+=loss_identity.item()/len(dataloader)
         # 满足采样间隔后，采样图像
         if batches_done % opt.sample_interval == 0:
-            sample_images(batches_done)
-
+            sample_images(i,epoch)
+    
     # 更新学习率
     lr_scheduler_G.step()
     lr_scheduler_D_A.step()
     lr_scheduler_D_B.step()
     # 记录tensorboard
-    writer.add_scalar('D loss', D_loss, epoch)
-    writer.add_scalar('G loss', G_loss, epoch)
-    writer.add_scalar('GAN loss', GAN_loss, epoch)
-    writer.add_scalar('cycle loss', cycle_loss, epoch)
-    writer.add_scalar('identity loss', identity_loss, epoch)
+    # writer.add_scalar('D loss', D_loss, epoch)
+    # writer.add_scalar('G loss', G_loss, epoch)
+    # writer.add_scalar('GAN loss', GAN_loss, epoch)
+    # writer.add_scalar('cycle loss', cycle_loss, epoch)
+    # writer.add_scalar('identity loss', identity_loss, epoch)
+    # 将loss写入loss.txt
+    with open('./loss.txt', 'a+') as f:
+            for i in range(len(log)):
+                f.write(log[i])
     if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
         # 保存模型 checkpoints
         torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name, epoch))
         torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name, epoch))
         torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name, epoch))
         torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name, epoch))
-writer.close()
-# 将loss写入loss.txt
-with open('./loss.txt', 'w+') as f:
-        for i in range(len(log)):
-            f.write(log[i])
+# writer.close()
