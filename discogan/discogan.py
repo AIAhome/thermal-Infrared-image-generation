@@ -105,7 +105,7 @@ parser.add_argument("--lambda_cycle",
 parser.add_argument("--lambda_perceptual",
                     type=float,
                     default=0.05,
-                    help="identity loss weight")
+                    help="perceptual loss weight")
 parser.add_argument("--lambda_content",
                     type=float,
                     default=1,
