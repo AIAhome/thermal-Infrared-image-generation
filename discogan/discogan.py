@@ -19,7 +19,7 @@ from torchvision import datasets
 from models import *
 from datasets import *
 
-import torch.nn as nn
+import torch.nn as nn   
 import torch.nn.functional as F
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -105,7 +105,7 @@ parser.add_argument("--lambda_cycle",
 parser.add_argument("--lambda_perceptual",
                     type=float,
                     default=0.05,
-                    help="identity loss weight")
+                    help="perceptual loss weight")
 parser.add_argument("--lambda_content",
                     type=float,
                     default=1,
@@ -127,10 +127,8 @@ os.makedirs("%s/runs/%s" % (args.log_path, timestamp), exist_ok=True)
 # Losses
 adversarial_loss = torch.nn.MSELoss()
 cycle_loss = torch.nn.L1Loss()
-# identity_loss = torch.nn.L1Loss()
 perceptual_loss = torch.nn.L1Loss()
 content_loss = torch.nn.L1Loss()
-# pixelwise_loss = torch.nn.L1Loss()
 
 # Initialize generator and discriminator
 a_input_shape = (args.a_channels, args.img_height, args.img_width)
@@ -141,6 +139,7 @@ D_A = Discriminator(a_input_shape)
 D_B = Discriminator(b_input_shape)
 vgg_feature_extractor = FeatureExtractor()
 
+# gpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 G_AB = G_AB.to(device)
 G_BA = G_BA.to(device)
@@ -148,11 +147,9 @@ D_A = D_A.to(device)
 D_B = D_B.to(device)
 adversarial_loss.to(device)
 cycle_loss.to(device)
-# identity_loss.to(device)
 perceptual_loss.to(device)
 content_loss.to(device)
 vgg_feature_extractor.to(device)
-# pixelwise_loss.to(device)
 
 # Set feature extractor to inference mode
 vgg_feature_extractor.eval()
@@ -190,8 +187,6 @@ optimizer_D_B = torch.optim.Adam(D_B.parameters(),
                                  lr=args.lr,
                                  betas=(args.b1, args.b2))
 
-# Input tensor type
-# Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
 # Dataset loader
 A_transforms = [
@@ -202,7 +197,6 @@ A_transforms = [
     transforms.ToTensor(),
     transforms.Normalize((0.5, ), (0.5, )),
 ]
-
 B_transforms = [
     transforms.Grayscale(num_output_channels=3),
     transforms.CenterCrop(size=args.img_height),
@@ -230,7 +224,7 @@ val_dataloader = DataLoader(
     num_workers=args.n_cpu,
 )
 
-
+# sample image to save
 def sample_images(batches_done, device):
     """Saves a generated sample from the validation set"""
     nrow = 5
@@ -249,7 +243,6 @@ def sample_images(batches_done, device):
     gray_fake_B = eval_B_transforms(fake_B)
     gray_cycle_B = eval_B_transforms(cycle_B)
 
-    # Arange images along x-axis
     real_A = make_grid(real_A, nrow=nrow, normalize=True)  # 拼成一副图像
     real_B = make_grid(real_B, nrow=nrow, normalize=True)
     fake_A = make_grid(fake_A, nrow=nrow, normalize=True)
@@ -311,19 +304,10 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
 
         loss_GAN = (loss_GAN_AB + loss_GAN_BA) / 2  # 生成器loss, 即判别器输出概率与真的差值
 
-        # Pixelwise translation loss
-        # loss_pixelwise = (pixelwise_loss(fake_A, real_A) +
-        #                   pixelwise_loss(fake_B, real_B)) / 2 # TODO: 没啥用感觉, 因为不是有监督的
-
         # Cycle loss
         loss_cycle_A = cycle_loss(G_BA(fake_B), real_A)
         loss_cycle_B = cycle_loss(G_AB(fake_A), real_B)
         loss_cycle = (loss_cycle_A + loss_cycle_B) / 2
-
-        # # Identity loss
-        # loss_identity_A = identity_loss(G_BA(real_A), real_A)
-        # loss_identity_B = identity_loss(G_AB(real_B), real_B)
-        # loss_identity = (loss_identity_A + loss_identity_B) / 2
 
         # Content loss
         cycle_A_features = vgg_feature_extractor(G_BA(fake_B))
@@ -405,30 +389,14 @@ for epoch in tqdm(range(args.epoch, args.n_epochs), desc='epoch', position=1):
         batches_left = args.n_epochs * len(dataloader) - batches_done
         prev_time = time.time()
 
-        # Print log
-        # if i % 100 == 0:
-        #     tqdm.write(
-        #         "\r[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f, adv: %f, cycle: %f]"
-        #         % (
-        #             epoch,
-        #             args.n_epochs,
-        #             i,
-        #             len(dataloader),
-        #             loss_D.item(),
-        #             loss_G.item(),
-        #             loss_GAN.item(),
-        #             # loss_pixelwise.item(), # , pixel: %f
-        #             loss_cycle.item(),
-        #         ))
-
         # If at sample interval save image
         if batches_done % args.sample_interval == 0:
             sample_images(batches_done, device)
 
         # add model graph
         if epoch == 0 and i == 0:
-            writer.add_graph(G_AB, real_A)
-            writer.add_graph(G_BA, real_B)
+            # writer.add_graph(G_AB, real_A)
+            # writer.add_graph(G_BA, real_B)
             writer.add_graph(D_A, real_A)
             writer.add_graph(D_B, real_B)
 
