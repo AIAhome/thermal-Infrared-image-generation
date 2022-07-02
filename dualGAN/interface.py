@@ -21,9 +21,9 @@ data_path="/root/autodl-tmp/FLIR_ADAS_v2"
 n_cpu = 8
 
 timestamp_1 = '20220610_234847'#高还原网络
-timestamp_2 = '20220610_181556'#迁移网络
+timestamp_2 = '20220604_110426'#迁移网络
 epoch_1 = 10
-epoch_2 = 10
+epoch_2 = 96
 
 ############################################## keep the same as dualgan.py ################################################
 G_AB_0 = Generator(3,3,is_A2B=True)
@@ -81,5 +81,5 @@ for i,data in tqdm(enumerate(dataloader),total=len(dataloader)):
     gen = G_AB_1(rgb)
 
     gray = data['B']
-    save_image(inverse_normalize(gray,mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),output_path+'/B_img/'+str(i)+'.jpg')
-    save_image(inverse_normalize(gen,mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),output_path+'/fake_B_img/'+str(i)+'.jpg')
+    # save_image(inverse_normalize(gray,mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),output_path+'/B_img/'+str(i)+'.jpg')
+    save_image(inverse_normalize(gen,mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),output_path+'/pre_fake_B_img/'+str(i)+'.jpg')
